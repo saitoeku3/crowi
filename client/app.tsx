@@ -7,7 +7,9 @@ import moment from 'moment'
 import Crowi from './util/Crowi'
 import CrowiRenderer from './util/CrowiRenderer'
 import CrowiAuth from './util/CrowiAuth'
+import Emitter from './emitter'
 
+import SideMenuTrigger from 'components/SideMenuTrigger'
 import HeaderSearchBox from 'components/HeaderSearchBox'
 import SearchPage from 'components/SearchPage'
 import PageListSearch from 'components/PageListSearch'
@@ -24,7 +26,10 @@ import NotificationPage from 'components/NotificationPage'
 import HeaderNotification from 'components/HeaderNotification'
 import WatchButton from 'components/Notification/WatchButton'
 import AdminShare from 'components/Admin/Share/AdminShare'
-import AdminRebuildSearch from 'components/Admin/AdminRebuildSearch'
+import Comment from 'components/Comment/Comment'
+import AdminPage from 'components/Admin/AdminPage'
+
+import hydrateComponents from './hydrateComponents'
 
 i18n()
 
@@ -32,9 +37,13 @@ moment.locale(navigator.userLanguage || navigator.language)
 
 const mainContent = document.querySelector('#content-main')
 let pageId: string | null = null
+let revisionId: string | null = null
+let revisionCreatedAt: string | null = null
 let pageContent: string | null = null
 if (mainContent !== null) {
   pageId = mainContent.getAttribute('data-page-id')
+  revisionId = mainContent.getAttribute('data-page-revision-id')
+  revisionCreatedAt = mainContent.getAttribute('data-page-revision-created')
   const rawText = document.getElementById('raw-text-original')
   if (rawText) {
     pageContent = rawText.innerHTML
@@ -44,7 +53,7 @@ if (mainContent !== null) {
 const getTextContent = (element: HTMLElement | null) => (element ? element.textContent : null)
 
 const { user = {} } = JSON.parse(getTextContent(document.getElementById('user-context-hydrate')) || '{}')
-const csrfToken = $('#content-main').data('csrftoken')
+const csrfToken = $('#content-main').data('csrftoken') || $('#admin-page').data('csrftoken')
 // FIXME
 const crowi = new Crowi({ user, csrfToken }, window)
 window.crowi = crowi
@@ -62,6 +71,7 @@ window.crowiAuth = crowiAuth
 
 const me = $('body').data('me')
 const componentMappings = {
+  'side-menu-trigger': <SideMenuTrigger crowi={crowi} />,
   'search-top': <HeaderSearchBox crowi={crowi} />,
   'search-page': <SearchPage crowi={crowi} />,
   'page-list-search': <PageListSearch crowi={crowi} />,
@@ -72,7 +82,6 @@ const componentMappings = {
   'notification-page': <NotificationPage crowi={crowi} />,
 
   // 'revision-history': <PageHistory pageId={pageId} />,
-  // 'page-comment': <PageComment />,
   'backlink-list': <Backlink pageId={pageId} crowi={crowi} />,
   'seen-user-list': <SeenUserList crowi={crowi} />,
   'bookmark-button': <BookmarkButton pageId={pageId} crowi={crowi} />,
@@ -80,7 +89,8 @@ const componentMappings = {
   'secret-keyword-form-container': <SecretKeywordFormContainer crowi={crowi} />,
   'watch-button': <WatchButton pageId={pageId} crowi={crowi} />,
   'admin-share': <AdminShare crowi={crowi} />,
-  'admin-rebuild-search': <AdminRebuildSearch crowi={crowi} />,
+  'page-comments': <Comment crowi={crowi} pageId={pageId} revisionId={revisionId} revisionCreatedAt={revisionCreatedAt} isSharePage={isSharePage} />,
+  'admin-page': <AdminPage crowi={crowi} />,
 }
 
 Object.entries(componentMappings).forEach(([key, component]) => {
@@ -89,6 +99,37 @@ Object.entries(componentMappings).forEach(([key, component]) => {
     ReactDOM.render(component, elem)
   }
 })
+
+// TODO: remove this logic after migrate to React
+const closeSideMenuHandler = e => {
+  Emitter.emit('closeSideMenu')
+}
+Emitter.on('sideMenuHandle', isOpen => {
+  const closeTriggerElements = ['crowi-global-menu', 'v2-container-backdrop']
+  const containerElement = document.getElementById('crowi-main-container')
+  const menuClassName = ' side-menu-open'
+  if (containerElement) {
+    if (isOpen) {
+      containerElement.className += menuClassName
+      for (const elemName of closeTriggerElements) {
+        const e = document.getElementById(elemName)
+        if (e) {
+          e.addEventListener('click', closeSideMenuHandler)
+        }
+      }
+    } else {
+      containerElement.className = containerElement.className.replace(menuClassName, '')
+      for (const elemName of closeTriggerElements) {
+        const e = document.getElementById(elemName)
+        if (e) {
+          e.removeEventListener('click', closeSideMenuHandler)
+        }
+      }
+    }
+  }
+})
+
+hydrateComponents()
 
 // うわーもうー
 $('a[data-toggle="tab"][href="#revision-history"]').on('show.bs.tab', function() {
